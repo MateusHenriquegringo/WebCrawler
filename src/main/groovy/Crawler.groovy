@@ -2,6 +2,7 @@ import groovyx.net.http.optional.Download
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
+import org.jsoup.select.Elements
 
 import java.nio.file.Paths
 
@@ -19,8 +20,8 @@ class Crawler {
         return this
     }
 
-    Crawler findButton(String buttonUrl) {
-        setCurrentElement(getCurrentDocument().getElementsByAttributeValue("href", buttonUrl).first())
+    Crawler findButton(URLS url) {
+        setCurrentElement(getCurrentDocument().getElementsByAttributeValue("href", url.getUrl()).first())
         return this
     }
 
@@ -29,7 +30,7 @@ class Crawler {
         return this
     }
 
-    void download() {
+    Crawler download() {
         File pathToDownload = Paths.get("download").toFile();
         String fileName = getCurrentElement().attr("href").substring(getCurrentElement().attr("href").lastIndexOf('/') + 1);
         File fileToDownload = new File(pathToDownload, fileName);
@@ -48,6 +49,34 @@ class Crawler {
             Download.toFile(delegate, fileToDownload)
         }) as File
         file.createNewFile()
+
+        return this
+    }
+
+    List<ComponentesTISS> collectDataFromTable() {
+        List<ComponentesTISS> listComponents = new ArrayList<>();
+
+        Element tbody = getCurrentDocument().getElementsByTag("table").first()
+                .getElementsByTag("tbody").first();
+        Elements trList = tbody.getElementsByTag("tr");
+
+        trList.forEach { row ->
+            Elements tdList = row.getElementsByTag("td");
+
+            def comp = getTextFromElement(tdList.first(), "span");
+            def publi = getTextFromElement(tdList.get(1), "span");
+            def startVig = getTextFromElement(tdList.get(2), "span");
+
+            listComponents.add(new ComponentesTISS(comp, publi, startVig));
+        }
+
+        return listComponents;
+    }
+
+    private String getTextFromElement(Element element, String tag) {
+        return Optional.ofNullable(element.getElementsByTag(tag).first())
+                .orElse(element)
+                .text();
     }
 
     Document getCurrentDocument() {
