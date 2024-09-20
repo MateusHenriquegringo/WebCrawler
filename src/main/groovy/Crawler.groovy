@@ -1,3 +1,4 @@
+import com.opencsv.CSVWriter
 import groovyx.net.http.optional.Download
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
@@ -12,7 +13,7 @@ class Crawler {
 
     private Document currentDocument;
     private Element currentElement;
-
+    private List<ComponentesTISS> componentesTISS = new ArrayList<>();
 
     Crawler requestHomePage() {
         String URL = "https://www.gov.br/ans/pt-br"
@@ -30,16 +31,28 @@ class Crawler {
         return this
     }
 
-    Crawler download() {
+    Crawler downloadXLSX() {
+        def urlDownload = getCurrentDocument()
+                .select('a.internal-link').first().attr('href')
+
+        File pathToDownload = Paths.get("CSV").toFile();
+        File fileToDownload = new File(pathToDownload, "Tabela de Erros.xlsx");
+
+        File file = configure({
+            request.uri = urlDownload
+        }).get({
+            Download.toFile(delegate, fileToDownload)
+        }) as File
+
+        file.createNewFile()
+
+        return this
+    }
+
+    Crawler downloadZIP() {
         File pathToDownload = Paths.get("download").toFile();
         String fileName = getCurrentElement().attr("href").substring(getCurrentElement().attr("href").lastIndexOf('/') + 1);
         File fileToDownload = new File(pathToDownload, fileName);
-        int counter = 1;
-        while (fileToDownload.exists()) {
-            String newFileName = fileName.substring(0, fileName.lastIndexOf('.')) + "_" + counter + fileName.substring(fileName.lastIndexOf('.'));
-            fileToDownload = new File(pathToDownload, newFileName);
-            counter++;
-        }
 
         if (!pathToDownload.exists()) pathToDownload.mkdirs()
 
@@ -53,24 +66,57 @@ class Crawler {
         return this
     }
 
-    List<ComponentesTISS> collectDataFromTable() {
-        List<ComponentesTISS> listComponents = new ArrayList<>();
+    Crawler collectDataFromTable() {
 
         Element tbody = getCurrentDocument().getElementsByTag("table").first()
                 .getElementsByTag("tbody").first();
         Elements trList = tbody.getElementsByTag("tr");
 
-        trList.forEach { row ->
+        for (Element row : trList) {
             Elements tdList = row.getElementsByTag("td");
 
-            def comp = getTextFromElement(tdList.first(), "span");
-            def publi = getTextFromElement(tdList.get(1), "span");
-            def startVig = getTextFromElement(tdList.get(2), "span");
+            def comp = this.getTextFromElement(tdList.first(), "span");
+            if (isBefore2016(comp)) continue
+            def publi = this.getTextFromElement(tdList.get(1), "span");
+            def startVig = this.getTextFromElement(tdList.get(2), "span");
 
-            listComponents.add(new ComponentesTISS(comp, publi, startVig));
+            this.getComponentesTISS().add(new ComponentesTISS(comp, publi, startVig));
         }
 
-        return listComponents;
+        return this;
+    }
+
+    private boolean isBefore2016(String data) {
+        try {
+            String yearString = data.replaceAll("[^0-9]", "");
+            int year = Integer.parseInt(yearString);
+            return year < 2016;
+        } catch (NumberFormatException e) {
+            throw new RuntimeException("Erro ao extrair ano da string: " + e.getMessage());
+        }
+    }
+
+
+    Crawler writeCsvFileOfComponentesTISS() {
+        try (
+                CSVWriter writer = new CSVWriter(new FileWriter("CSV/HistoricoDasVersoes.csv"))
+        ) {
+            String[] header = ["Componente", "Publicação", "Início de Vigência"];
+            writer.writeNext(header);
+
+            this.getComponentesTISS().forEach { componente ->
+                String[] data = [
+                        componente.getCompetencia(),
+                        componente.getPublicacao(),
+                        componente.getInicioVigencia()
+                ];
+                writer.writeNext(data);
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+
+        return this;
     }
 
     private String getTextFromElement(Element element, String tag) {
@@ -93,6 +139,14 @@ class Crawler {
 
     void setCurrentElement(Element currentElement) {
         this.currentElement = currentElement
+    }
+
+    List<ComponentesTISS> getComponentesTISS() {
+        return componentesTISS
+    }
+
+    void setComponentesTISS(List<ComponentesTISS> componentesTISS) {
+        this.componentesTISS = componentesTISS
     }
 
 }
