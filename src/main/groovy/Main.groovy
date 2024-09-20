@@ -36,9 +36,6 @@ public class Main {
                 .clickHttpGET()
                 .downloadXLSX()
 
-    print(crawler.getCurrentElement())
-
     }
 }
-
 
